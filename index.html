@@ -181,7 +181,49 @@ async function generateWordInfo(word) {
   };
 }
 
-/* =============================== STATE =============================== */
+/* ============================== STARTER PACK ============================== */
+const STARTER_WORDS = [
+  "negotiate","revenue","deadline","budget","stakeholder","procurement","forecast",
+  "invoice","compliance","leverage","benchmark","outsource","acquisition","merger",
+  "liability","asset","dividend","equity","overhead","turnover","quota","tariff",
+  "subsidy","inventory","logistics","supplier","vendor","contract","clause",
+  "arbitration","agenda","proposal","feasibility","sustainability","initiative",
+  "implementation","allocation","expenditure","portfolio","collateral"
+];
+
+async function loadStarterPack() {
+  const existing = new Set(state.words.map(w => w.word.toLowerCase()));
+  const toAdd = STARTER_WORDS.filter(w => !existing.has(w.toLowerCase()));
+  if (toAdd.length === 0) {
+    setState({ seedErrors: [], seedMessage: "이미 모든 추천 단어가 저장되어 있어요." });
+    return;
+  }
+  setState({ seeding: true, seedProgress: { done: 0, total: toAdd.length }, seedErrors: [], seedMessage: "" });
+  let words = [...state.words];
+  const errors = [];
+  for (let i = 0; i < toAdd.length; i++) {
+    try {
+      const info = await generateWordInfo(toAdd[i]);
+      const entry = {
+        id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
+        word: info.word, pos: info.pos || "", meaning: info.meaning || "",
+        example: info.example || "", exampleKo: info.exampleKo || "", synonym: info.synonym || "",
+        level: 0, reviewCount: 0, createdAt: Date.now(), nextReview: Date.now()
+      };
+      words = [entry, ...words];
+      saveWords(words);
+    } catch (e) {
+      errors.push(toAdd[i]);
+    }
+    setState({ words, seedProgress: { done: i + 1, total: toAdd.length } });
+    await new Promise(r => setTimeout(r, 350));
+  }
+  setState({
+    seeding: false,
+    seedErrors: errors,
+    seedMessage: errors.length ? `${toAdd.length - errors.length}개 추가 완료 (${errors.length}개는 사전에 없어 건너뜀)` : `${toAdd.length}개 단어를 모두 추가했어요.`
+  });
+}
 let state = {
   words: loadWords(),
   view: "home",
@@ -194,6 +236,10 @@ let state = {
   cursor: 0,
   flipped: false,
   quizChoice: null,
+  seeding: false,
+  seedProgress: { done: 0, total: 0 },
+  seedErrors: [],
+  seedMessage: "",
 };
 
 function setState(patch) { Object.assign(state, patch); render(); }
@@ -286,6 +332,8 @@ function render() {
       <button class="cta" ${dueWords.length===0?"disabled":""} onclick="startReview()">${dueWords.length>0?`오늘의 복습 시작 (${dueWords.length})`:"오늘 복습할 단어가 없어요"}</button>
       <button class="cta secondary" onclick="setState({view:'add'})">+ 새 단어 추가</button>
       <button class="cta secondary" onclick="setState({view:'list'})">전체 단어 보기</button>
+      <button class="cta secondary" ${state.seeding?"disabled":""} onclick="loadStarterPack()">📦 ${state.seeding ? `단어팩 불러오는 중… (${state.seedProgress.done}/${state.seedProgress.total})` : "추천 비즈니스 단어팩 불러오기 (40개)"}</button>
+      ${state.seedMessage ? `<div class="loading">${esc(state.seedMessage)}</div>` : ""}
     `;
   }
 

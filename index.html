@@ -362,6 +362,53 @@ function deleteWord(id) {
   setState({ words });
 }
 
+/* ---------------- backup / restore ---------------- */
+function exportWords() {
+  const blob = new Blob([JSON.stringify(state.words, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `vocab-backup-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function triggerImport() {
+  document.getElementById("importFileInput").click();
+}
+
+function handleImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!Array.isArray(imported)) throw new Error("형식이 올바르지 않아요.");
+      const existingIds = new Set(state.words.map(w => w.id));
+      const existingWords = new Set(state.words.map(w => w.word.toLowerCase()));
+      const merged = [...state.words];
+      let added = 0;
+      imported.forEach(w => {
+        if (w && w.word && !existingWords.has(w.word.toLowerCase())) {
+          merged.push(w);
+          existingWords.add(w.word.toLowerCase());
+          added++;
+        }
+      });
+      saveWords(merged);
+      setState({ words: merged, seedMessage: `백업에서 ${added}개 단어를 복원했어요. (중복 ${imported.length - added}개는 건너뜀)` });
+    } catch (err) {
+      setState({ seedMessage: "복원 실패: 올바른 백업 파일이 아니에요." });
+    }
+  };
+  reader.readAsText(file);
+  input.value = "";
+}
+
 function startReview() {
   const dueWords = state.words.filter(isDue);
   const pool = shuffle(dueWords);
@@ -419,6 +466,11 @@ function render() {
       <button class="cta secondary" onclick="setState({view:'list'})">전체 단어 보기</button>
       <button class="cta secondary" ${state.seeding?"disabled":""} onclick="loadStarterPack()">📦 ${state.seeding ? `단어팩 불러오는 중… (${state.seedProgress.done}/${state.seedProgress.total})` : "추천 비즈니스 단어팩 불러오기 (40개)"}</button>
       ${state.seedMessage ? `<div class="loading">${esc(state.seedMessage)}</div>` : ""}
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="cta secondary" style="margin-bottom:0; flex:1;" onclick="exportWords()">💾 백업</button>
+        <button class="cta secondary" style="margin-bottom:0; flex:1;" onclick="triggerImport()">📥 복원</button>
+      </div>
+      <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="handleImportFile(this)" />
     `;
   }
 
